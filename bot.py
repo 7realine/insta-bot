@@ -33,7 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_sub(update, context):
         await update.message.reply_text(
             "أهلاً بك! 📥\n"
-            "أرسل لي أي رابط من (إنستغرام، تيك توك، يوتيوب، فيسبوك، تويتر/X) أو رابط ستوري وسأقوم بتحميله لك فوراً!"
+            "أرسل لي أي رابط من إنستغرام (منشور، ريلز، ستوري)، تيك توك، يوتيوب، أو فيسبوك وسأقوم بتحميله لك فوراً!"
         )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -47,13 +47,17 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("جاري التحميل ومعالجة المقطع... ⏳")
     
-    # إعدادات شمولية لجميع المنصات والستوريات مع الدمج التلقائي للصوت والصورة
+    # إعدادات متقدمة تحاكي متصفح حقيقي لتجاوز قيود الستوريات والمنصات
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'downloaded_media.%(ext)s',
         'quiet': True,
         'merge_output_format': 'mp4',
         'noplaylist': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
 
     output_filename = 'downloaded_media.mp4'
@@ -63,7 +67,6 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
-            # التأكد من الصيغة الناتجة للدمج
             base, _ = os.path.splitext(filename)
             if os.path.exists(base + ".mp4"):
                 output_filename = base + ".mp4"
@@ -77,10 +80,9 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Download error: {e}")
-        await msg.edit_text("حدث خطأ أثناء تحميل المقطع. تأكد من أن الحساب/المحتوى عام والرابط صحيح.")
+        await msg.edit_text("حدث خطأ أثناء التحميل. يرجى التأكد من أن الحساب عام وأن الرابط مباشر وصحيح.")
 
     finally:
-        # تنظيف الملفات المؤقتة بعد إرسالها
         if os.path.exists(output_filename):
             os.remove(output_filename)
 
@@ -89,4 +91,3 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
     app.run_polling()
-    
