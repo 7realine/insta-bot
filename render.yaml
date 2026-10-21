@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: insta-bot-7loz
+    name: insta-bot
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
