@@ -13,11 +13,9 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user_id = update.effective_user.id
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        # تم إضافة owner لتتوافق مع التحديثات الجديدة
         if member.status in ['owner', 'creator', 'administrator', 'member']:
             return True
     except Exception as e:
-        print(f"Error checking sub: {e}")
         logging.error(f"Error checking sub: {e}")
     
     keyboard = [
@@ -46,10 +44,12 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("جاري التحميل... ⏳")
     
+    # تم تعديل خيارات التحميل لضمان دمج الصوت والفيديو معاً بأعلى جودة
     ydl_opts = {
-        'format': 'best',
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'video.mp4',
-        'quiet': True
+        'quiet': True,
+        'merge_output_format': 'mp4'
     }
 
     try:
