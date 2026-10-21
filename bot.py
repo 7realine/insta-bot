@@ -31,37 +31,58 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_sub(update, context):
-        await update.message.reply_text("أهلاً بك! أرسل لي أي رابط إنستغرام وسأقوم بتحميله لك فوراً 📥")
+        await update.message.reply_text(
+            "أهلاً بك! 📥\n"
+            "أرسل لي أي رابط من (إنستغرام، تيك توك، يوتيوب، فيسبوك، تويتر/X) أو رابط ستوري وسأقوم بتحميله لك فوراً!"
+        )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_sub(update, context):
         return
 
-    url = update.message.text
-    if "instagram.com" not in url:
-        await update.message.reply_text("الرجاء إرسال رابط إنستغرام صحيح.")
+    url = update.message.text.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        await update.message.reply_text("الرجاء إرسال رابط صحيح يبدأ بـ http أو https.")
         return
 
-    msg = await update.message.reply_text("جاري التحميل... ⏳")
+    msg = await update.message.reply_text("جاري التحميل ومعالجة المقطع... ⏳")
     
-    # تم تعديل خيارات التحميل لضمان دمج الصوت والفيديو معاً بأعلى جودة
+    # إعدادات شمولية لجميع المنصات والستوريات مع الدمج التلقائي للصوت والصورة
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'video.mp4',
+        'outtmpl': 'downloaded_media.%(ext)s',
         'quiet': True,
-        'merge_output_format': 'mp4'
+        'merge_output_format': 'mp4',
+        'noplaylist': True,
     }
+
+    output_filename = 'downloaded_media.mp4'
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            # التأكد من الصيغة الناتجة للدمج
+            base, _ = os.path.splitext(filename)
+            if os.path.exists(base + ".mp4"):
+                output_filename = base + ".mp4"
+            elif os.path.exists(filename):
+                output_filename = filename
 
-        await update.message.reply_video(video=open('video.mp4', 'rb'))
+        with open(output_filename, 'rb') as video_file:
+            await update.message.reply_video(video=video_file)
+        
         await msg.delete()
-        if os.path.exists('video.mp4'):
-            os.remove('video.mp4')
+
     except Exception as e:
-        await msg.edit_text("حدث خطأ أثناء تحميل الفيديو، تأكد من أن الحساب عام والرابط صحيح.")
+        logging.error(f"Download error: {e}")
+        await msg.edit_text("حدث خطأ أثناء تحميل المقطع. تأكد من أن الحساب/المحتوى عام والرابط صحيح.")
+
+    finally:
+        # تنظيف الملفات المؤقتة بعد إرسالها
+        if os.path.exists(output_filename):
+            os.remove(output_filename)
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
