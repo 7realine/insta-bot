@@ -1,12 +1,25 @@
 import os
 import logging
+from flask import Flask
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
+# إعداد سيرفر ويب وهمي لإبقاء البوت مستيقظاً على Render
+web_app = Flask('')
+
+@web_app.route('/')
+def home():
+    return "Bot is active and running 24/7!"
+
+def run_web():
+    port = int(os.environ.get('PORT', 8080))
+    web_app.run(host='0.0.0.0', port=port)
+
+# إعدادات البوت والقناة
 CHANNEL_ID = -1002040431490
 CHANNEL_LINK = "https://t.me/w6aqq"
-
 TOKEN = os.getenv("BOT_TOKEN", "8654140402:AAHTKYb_8v3LSs41KqV9rRdVgGO9antu8dM")
 
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -33,7 +46,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await check_sub(update, context):
         await update.message.reply_text(
             "أهلاً بك! 📥\n"
-            "أرسل لي أي رابط من إنستغرام (منشور، ريلز، ستوري)، تيك توك، يوتيوب، أو فيسبوك وسأقوم بتحميله لك فوراً!"
+            "أرسل لي أي رابط من إنستغرام، تيك توك، يوتيوب، أو فيسبوك وسأقوم بتحميله لك فوراً بالصوت والصورة!"
         )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -47,7 +60,6 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("جاري التحميل ومعالجة المقطع... ⏳")
     
-    # إعدادات متقدمة تحاكي متصفح حقيقي لتجاوز قيود الستوريات والمنصات
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'downloaded_media.%(ext)s',
@@ -80,13 +92,18 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logging.error(f"Download error: {e}")
-        await msg.edit_text("حدث خطأ أثناء التحميل. يرجى التأكد من أن الحساب عام وأن الرابط مباشر وصحيح.")
+        await msg.edit_text("حدث خطأ أثناء التحميل. يرجى التأكد من أن الحساب عام وأن الرابط صحيح.")
 
     finally:
         if os.path.exists(output_filename):
             os.remove(output_filename)
 
 if __name__ == '__main__':
+    # تشغيل سيرفر الويب في الخلفية ليبقى السيرفر مستيقظاً
+    t = threading.Thread(target=run_web)
+    t.start()
+
+    # تشغيل بوت تيليجرام
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
