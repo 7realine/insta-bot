@@ -1,28 +1,68 @@
+import os
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+CHANNEL_USERNAME = "@nnn12345mahmoud"
 
-TOKEN = "8654140402:AAHTKYb_8v3LSs41KqV9rRdVgGO9antu8dM"
+TOKEN = os.getenv("BOT_TOKEN", "8654140402:AAHTKYb_8v3LSs41KqV9rRdVgGO9antu8dM")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    user_id = update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        if member.status in ['creator', 'administrator', 'member']:
+            return True
+    except Exception as e:
+        logging.error(f"Error checking sub: {e}")
+    
+    channel_link = f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}"
+    keyboard = [
+        [InlineKeyboardButton("📢 إشترك في القناة هنا", url=channel_link)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⚠️ **عذراً عزيزي!**\n\nيجب عليك الاشتراك في قناة البوت أولاً لاستخدام خدمة التحميل.",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+    return False
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await check_sub(update, context):
+        await update.message.reply_text("أهلاً بك! أرسل لي أي رابط إنستغرام وسأقوم بتحميله لك فوراً 📥")
+
+async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_sub(update, context):
+        return
+
     url = update.message.text
-    if "instagram.com" in url:
-        await update.message.reply_text("⏳ جاري معالجة الرابط وجلب المحتوى...")
-        ydl_opts = {'outtmpl': 'downloaded_media.mp4'}
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            await update.message.reply_video(video=open('downloaded_media.mp4', 'rb'))
-        except Exception as e:
-            await update.message.reply_text("عذراً، حدث خطأ أثناء محاولة جلب الفيديو. تأكد أن الرابط عام وصحيح.")
-    else:
-        await update.message.reply_text("الرجاء إرسال رابط انستغرام صالح.")
+    if "instagram.com" not in url:
+        await update.message.reply_text("الرجاء إرسال رابط إنستغرام صحيح.")
+        return
+
+    msg = await update.message.reply_text("جاري التحميل... ⏳")
+    
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': 'video.mp4',
+        'quiet': True
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        await update.message.reply_video(video=open('video.mp4', 'rb'))
+        await msg.delete()
+        if os.path.exists('video.mp4'):
+            os.remove('video.mp4')
+    except Exception as e:
+        await msg.edit_text("حدث خطأ أثناء تحميل الفيديو، تأكد من أن الحساب عام والرابط صحيح.")
 
 if __name__ == '__main__':
-    application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    print("🤖 البوت يعمل الآن وجاهز لاستقبال الرسائل...")
-    application.run_polling()
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
+    app.run_polling()
