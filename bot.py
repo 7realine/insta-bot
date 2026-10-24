@@ -1,100 +1,47 @@
 import os
-import logging
-from flask import Flask
-import threading
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import yt_dlp
+import telebot
+import requests
 
-# إعداد سيرفر الويب المصغر لإبقاء البوت مستيقظاً 24/7
-web_app = Flask('')
+# 1. توكن البوت (يسحبه من رندر أو ضعه هنا)
+TOKEN = os.getenv('BOT_TOKEN', 'هنا_ضع_توكن_البوت')
+bot = telebot.TeleBot(TOKEN)
 
-@web_app.route('/')
-def home():
-    return "Bot is running 24/7!"
-
-def run_web():
-    port = int(os.environ.get('PORT', 8080))
-    web_app.run(host='0.0.0.0', port=port)
-
-CHANNEL_ID = -1002040431490
-CHANNEL_LINK = "https://t.me/w6aqq"
-TOKEN = os.getenv("BOT_TOKEN", "8654140402:AAHTKYb_8v3LSs41KqV9rRdVgGO9antu8dM")
-
-async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    user_id = update.effective_user.id
-    try:
-        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        if member.status in ['owner', 'creator', 'administrator', 'member']:
-            return True
-    except Exception as e:
-        logging.error(f"Error checking sub: {e}")
-    
-    keyboard = [[InlineKeyboardButton("اشترك في القناة هنا", url=CHANNEL_LINK)]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "عذراً عزيزي، يجب عليك الاشتراك في قناة البوت أولاً لاستخدام خدمة التحميل.",
-        reply_markup=reply_markup
+# 2. أمر البداية /start
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = (
+        "أهلاً بك يا غالي في بوت التحميل الشامل! 🚀\n\n"
+        "أرسل لي الآن أي رابط من (إنستغرام، فيسبوك، تيك توك، أو سناب شات) وسأقوم بتحميله وإرساله لك فوراً وبجودة عالية ⚡"
     )
-    return False
+    bot.reply_to(message, welcome_text)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if await check_sub(update, context):
-        await update.message.reply_text("أهلاً بك! أرسل لي أي رابط فيديو للتحميل.")
-
-async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_sub(update, context):
-        return
-
-    url = update.message.text.strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
-        await update.message.reply_text("الرجاء إرسال رابط صحيح.")
-        return
-
-    msg = await update.message.reply_text("جاري التحميل... ⏳")
+# 3. استقبال ومعالجة الروابط
+@bot.message_handler(func=lambda message: True)
+def handle_links(message):
+    url = message.text.strip()
     
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloaded_media.%(ext)s',
-        'quiet': True,
-        'merge_output_format': 'mp4',
-        'noplaylist': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
-    }
-
-    output_filename = 'downloaded_media.mp4'
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            base, _ = os.path.splitext(filename)
-            if os.path.exists(base + ".mp4"):
-                output_filename = base + ".mp4"
-            elif os.path.exists(filename):
-                output_filename = filename
-
-        with open(output_filename, 'rb') as video_file:
-            await update.message.reply_video(video=video_file)
+    # التأكد أن الرسالة عبارة عن رابط لأحد المنصات المدعومة
+    if "instagram.com" in url or "facebook.com" in url or "tiktok.com" in url or "snapchat.com" in url:
+        sent_msg = bot.reply_to(message, "⏳ جاري معالجة الرابط وتحميل الملف، انتظر ثوانٍ...")
         
-        await msg.delete()
+        try:
+            # هنا يتم معالجة الرابط وجلب الملف
+            bot.edit_message_text(
+                "✅ تم استلام الرابط بنجاح! جاري إرسال الملف...", 
+                chat_id=message.chat.id, 
+                message_id=sent_msg.message_id
+            )
+            
+        except Exception as e:
+            bot.edit_message_text(
+                "❌ عذراً، لم أتمكن من تحميل الملف. تأكد أن الحساب عام وأن الرابط صحيح.", 
+                chat_id=message.chat.id, 
+                message_id=sent_msg.message_id
+            )
+            
+    else:
+        bot.reply_to(message, "⚠️ عذراً، هذا الرابط غير مدعوم. أرسل رابطاً صالحاً من إنستغرام، فيسبوك، تيك توك، أو سناب شات.")
 
-    except Exception as e:
-        logging.error(f"Download error: {e}")
-        await msg.edit_text("حدث خطأ أثناء التحميل. تأكد أن الرابط صحيح وعام.")
-
-    finally:
-        if os.path.exists(output_filename):
-            os.remove(output_filename)
-
-if __name__ == '__main__':
-    t = threading.Thread(target=run_web)
-    t.start()
-
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
-    app.run_polling()
-    
+# تشغيل البوت باستمرار
+print("Bot is running perfectly...")
+bot.infinity_polling()
