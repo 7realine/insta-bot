@@ -1,6 +1,6 @@
 import os
 import telebot
-import requests
+import yt_dlp
 
 # 1. توكن البوت
 TOKEN = os.getenv('BOT_TOKEN', 'هنا_ضع_توكن_البوت')
@@ -10,8 +10,8 @@ bot = telebot.TeleBot(TOKEN)
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     welcome_text = (
-        "أهلاً بك يا غالي في بوت التحميل الشامل! 🚀\n\n"
-        "أرسل لي الآن أي رابط (إنستغرام، فيسبوك، تيك توك، أو سناب شات) وسأقوم بتحميله وإرساله لك فوراً ⚡"
+        "أهلاً بك يا غالي في بوت التحميل الشامل (الستوريات والريلز) 🚀\n\n"
+        "أرسل لي الآن أي رابط (إنستغرام ستوري أو ريلز، فيسبوك، تيك توك، أو سناب شات) وسأقوم بتحميله وإرساله لك فوراً ⚡"
     )
     bot.reply_to(message, welcome_text)
 
@@ -21,39 +21,55 @@ def handle_links(message):
     url = message.text.strip()
     
     # التأكد من أن الرابط يتبع لإحدى المنصات المدعومة
-    if "instagram.com" in url or "facebook.com" in url or "tiktok.com" in url or "snapchat.com" in url:
-        sent_msg = bot.reply_to(message, "⏳ جاري جلب الملف، يرجى الانتظار...")
+    if any(domain in url for domain in ["instagram.com", "facebook.com", "tiktok.com", "snapchat.com"]):
+        sent_msg = bot.reply_to(message, "⏳ جاري تحميل الملف (سواء ستوري أو فيديو)، انتظر لحظات...")
         
+        filename = None
         try:
-            # استخدام API موثوق وسريع للتحميل
-            api_url = "https://api.cobalt.tools/api/json"
-            headers = {
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "url": url
+            # إعدادات yt-dlp للتعامل مع الستوريات والفيديوهات
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': 'downloaded_media.%(ext)s',
+                'quiet': True,
+                'no_warnings': True,
             }
             
-            response = requests.post(api_url, json=payload, headers=headers)
-            res_data = response.json()
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
             
-            status = res_data.get("status")
+            bot.edit_message_text(
+                "✅ تم التحميل بنجاح، جاري إرسال الملف...", 
+                chat_id=message.chat.id, 
+                message_id=sent_msg.message_id
+            )
             
-            if status in ["stream", "redirect"]:
-                media_url = res_data.get("url")
-                bot.edit_message_text(
-                    "✅ تم التحميل بنجاح، جاري إرسال الملف...", 
-                    chat_id=message.chat.id, 
-                    message_id=sent_msg.message_id
-                )
-                bot.send_video(message.chat.id, media_url, caption="تم التحميل بواسطة البوت 📥")
+            with open(filename, 'rb') as media_file:
+                if filename.endswith(('.jpg', '.jpeg', '.png')):
+                    bot.send_photo(message.chat.id, media_file, caption="تم التحميل بواسطة البوت 📥")
+                else:
+                    bot.send_video(message.chat.id, media_file, caption="تم التحميل بواسطة البوت 📥")
+            
+            # تنظيف الملف من السيرفر
+            if filename and os.path.exists(filename):
+                os.remove(filename)
                 
-            elif status == "picker":
-                media_url = res_data["picker"][0]["url"]
-                bot.edit_message_text(
-                    "✅ تم التحميل بنجاح، جاري إرسال الملف...", 
-                    chat_id=message.chat.id, 
-                    message_id=sent_msg.message_id
-                )
-                
+        except Exception as e:
+            if filename and os.path.exists(filename):
+                try:
+                    os.remove(filename)
+                except:
+                    pass
+                    
+            bot.edit_message_text(
+                "❌ عذراً، لم أتمكن من تحميل هذا الرابط. قد يكون الحساب خاصاً أو الستوري منتهياً.", 
+                chat_id=message.chat.id, 
+                message_id=sent_msg.message_id
+            )
+            
+    else:
+        bot.reply_to(message, "⚠️ الرابط غير مدعوم. يرجى إرسال رابط صالح من إنستغرام، فيسبوك، تيك توك، أو سناب شات.")
+
+# تشغيل البوت
+print("Bot is running with yt-dlp...")
+bot.infinity_polling()
